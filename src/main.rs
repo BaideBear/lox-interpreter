@@ -1,10 +1,11 @@
-use lox_interpreter::{lexer::Lexer, parser::Parser};
+use lox_interpreter::{lexer::Lexer, parser::Parser, Expr, Stmt};
 use std::{
     fs,
     io::{self, Write},
     path::Path,
 };
 use lox_interpreter::token::Token;
+mod intepreter;
 
 fn main() {
     println!("Lox Interpreter (Rust)");
@@ -88,7 +89,9 @@ fn process_input(input: &str) {
     println!("\nAST:");
     let statements = parser.parse();  // 直接获取Vec<Stmt>
     
-    for stmt in statements {
+    /*for stmt in statements {
         println!("{:#?}", stmt);
-    }
+    }*/
+
+    intepreter::traverse_statements(&statements,0);
 }
