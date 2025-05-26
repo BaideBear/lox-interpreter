@@ -1,31 +1,25 @@
 use lox_interpreter::{lexer::Lexer, parser::Parser, Expr, Stmt,Literal};
 use lox_interpreter::token::Token;
 use std::collections::HashMap;
-use lazy_static::lazy_static;
-use std::sync::Mutex;
 
-lazy_static! {
-    pub static ref GLOBAL_MAP: Mutex<HashMap<String, f64>> = Mutex::new(HashMap::new());
-}
-
-pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize) {
+pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,map: &mut HashMap<String, Literal>) {
     for stmt in statements {
-        traverse_stmt(stmt,depth);
+        traverse_stmt(stmt,depth,map);
     }
 }
 
-pub fn traverse_stmt(stmt: &Stmt,depth: usize) {
+pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<String, Literal>) {
     for _ in 0..depth {
         print!("  ");
     }
     match stmt {
         Stmt::Expr(expr) => {
             println!("ExpressionStmt");
-            traverse_expr(expr,depth+1);
+            traverse_expr(expr,depth+1,map);
         }
         Stmt::Print(expr) => {
             println!("PrintStmt");
-            let value: Literal = traverse_expr(expr,depth+1);
+            let value: Literal = traverse_expr(expr,depth+1,map);
             match value {
                 Literal::Number(num) => println!("{}", num),
                 Literal::String(s) => println!("{}", s),
@@ -36,67 +30,85 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize) {
         Stmt::Var { name, initializer } => {
             println!("VarStmt: {:?}", name);
             if let Some(expr) = initializer {
-                traverse_expr(expr,depth+1);
+                let value: Literal = traverse_expr(expr,depth+1,map);
+                map.insert(name.lexeme().to_string(), value);
+            }
+            else{
+                map.insert(name.lexeme().to_string(), Literal::Nil);
             }
         }
         Stmt::Block(stmts) => {
             println!("BlockStmt");
+            let mut new_map: HashMap<String, Literal> = map.clone();
             for s in stmts {
-                traverse_stmt(s,depth+1);
+                traverse_stmt(s,depth+1,&mut new_map);
+            }
+            for (key, value) in new_map {
+                map.insert(key, value);
             }
         }
         Stmt::If { condition, then_branch, else_branch } => {
             println!("IfStmt");
-            traverse_expr(condition,depth+1);
-            traverse_stmt(then_branch,depth+1);
-            if let Some(else_branch) = else_branch {
-                traverse_stmt(else_branch,depth + 1);
+            let cond: Literal = traverse_expr(condition, depth + 1, map);
+            if let Literal::Bool(true) = cond {
+                traverse_stmt(then_branch, depth + 1, map);
+            } else {
+                if let Some(else_branch) = else_branch {
+                    traverse_stmt(else_branch, depth + 1, map);
+                }
             }
         }
         Stmt::While { condition, body } => {
             println!("WhileStmt");
-            traverse_expr(condition,depth+1);
-            traverse_stmt(body,depth+1);
+            loop{
+                let cond: Literal = traverse_expr(condition, depth + 1, map);
+                if let Literal::Bool(false) = cond {
+                    break;
+                }
+                traverse_stmt(body, depth + 1, map);
+            }
+            //traverse_expr(condition, depth + 1, map);
+            //traverse_stmt(body, depth + 1, map);
         }
         Stmt::For { initializer, condition, increment, body } => {
             println!("ForStmt");
             if let Some(init) = initializer {
-                traverse_stmt(init,depth + 1);
+                traverse_stmt(init,depth + 1,map);
             }
             if let Some(cond) = condition {
-                traverse_expr(cond,depth + 1);
+                traverse_expr(cond,depth + 1,map);
             }
             if let Some(inc) = increment {
-                traverse_expr(inc,depth + 1);
+                traverse_expr(inc,depth + 1,map);
             }
-            traverse_stmt(body,depth + 1);
+            traverse_stmt(body,depth + 1,map);
         }
         Stmt::Function { name, params, body } => {
             println!("FunctionStmt: {:?}", name);
             for param in params {
                 println!("  Param: {:?}", param);
             }
-            traverse_statements(body,depth + 1);
+            traverse_statements(body,depth + 1,map);
         }
         Stmt::Return { keyword, value } => {
             println!("ReturnStmt: {:?}", keyword);
             if let Some(expr) = value {
-                traverse_expr(expr,depth + 1);  
+                traverse_expr(expr,depth + 1,map);  
             }
         }
         Stmt::Class { name, superclass, methods } => {
             println!("ClassStmt: {:?}", name);
             if let Some(superclass_expr) = superclass {
-                traverse_expr(superclass_expr,depth + 1);
+                traverse_expr(superclass_expr,depth + 1,map);
             }
             for method in methods {
-                traverse_stmt(method,depth + 1);
+                traverse_stmt(method,depth + 1,map);
             }
         }
     }
 }
 
-pub fn traverse_expr(expr: &Expr,depth: usize) -> Literal {
+pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<String, Literal>) -> Literal {
     for _ in 0..depth {
         print!("  ");
     }
@@ -108,23 +120,31 @@ pub fn traverse_expr(expr: &Expr,depth: usize) -> Literal {
         }
         Expr::Variable(token) => {
             println!("VariableExpr: {:?}", token);
-            Literal::Number(0.0)
+            let value: Literal = match map.get(&token.lexeme().to_string()) {
+                Some(val) => val.clone(),
+                None => {
+                    println!("  Error: Variable '{}' not found", token.lexeme());
+                    Literal::Nil
+                }
+            };
+            value
         }
         Expr::Assign { name, value } => {
             println!("AssignExpr: {:?}", name);
-            traverse_expr(value,depth+1);
+            let value: Literal = traverse_expr(value,depth+1,map);
+            map.insert(name.lexeme().to_string(), value);
             Literal::Number(0.0)
         }
         Expr::Logical { left, operator, right } => {
             println!("LogicalExpr: {:?}", operator);
-            traverse_expr(left,depth+1);
-            traverse_expr(right,depth+1);
+            traverse_expr(left,depth+1,map);
+            traverse_expr(right,depth+1,map);
             Literal::Number(0.0)
         }
         Expr::Binary { left, operator, right } => {
             println!("BinaryExpr: {:?}", operator);
-            let left_value: Literal = traverse_expr(left,depth+1);
-            let right_value: Literal = traverse_expr(right,depth+1);
+            let left_value: Literal = traverse_expr(left,depth+1,map);
+            let right_value: Literal = traverse_expr(right,depth+1,map);
             let mut result: Literal = Literal::Number(0.0);
             let left_num = match left_value {
                 Literal::Number(num) => num,
@@ -145,13 +165,43 @@ pub fn traverse_expr(expr: &Expr,depth: usize) -> Literal {
                         println!("  Error: Division by zero");
                     }
                 }
+                ">" => {
+                    result = Literal::Bool(left_num > right_num);
+                }
+                "<" => {
+                    result = Literal::Bool(left_num < right_num);
+                }
+                ">=" => {
+                    result = Literal::Bool(left_num >= right_num);
+                }
+                "<=" => {
+                    result = Literal::Bool(left_num <= right_num);
+                }
+                "==" => {
+                    result=match (left_value, right_value) {
+                        (Literal::Number(l), Literal::Number(r)) => Literal::Bool(l == r),
+                        (Literal::String(l), Literal::String(r)) => Literal::Bool(l == r),
+                        (Literal::Bool(l), Literal::Bool(r)) => Literal::Bool(l == r),
+                        (Literal::Nil, Literal::Nil) => Literal::Bool(true),
+                        _ => Literal::Bool(false),
+                    };
+                }
+                "!=" => {
+                    result=match (left_value, right_value) {
+                        (Literal::Number(l), Literal::Number(r)) => Literal::Bool(l != r),
+                        (Literal::String(l), Literal::String(r)) => Literal::Bool(l != r),
+                        (Literal::Bool(l), Literal::Bool(r)) => Literal::Bool(l != r),
+                        (Literal::Nil, Literal::Nil) => Literal::Bool(false),
+                        _ => Literal::Bool(true),
+                    };
+                }
                 _ => println!("  Result: Unknown operation"),
             }
             result
         }
         Expr::Unary { operator, right } => {
             println!("UnaryExpr: {:?}", operator);
-            let value: Literal = traverse_expr(right, depth + 1);
+            let value: Literal = traverse_expr(right, depth + 1,map);
             let mut result: Literal = Literal::Number(0.0);
             let num = match value {
                 Literal::Number(n) => n,
@@ -166,21 +216,21 @@ pub fn traverse_expr(expr: &Expr,depth: usize) -> Literal {
         }
         Expr::Call { callee, paren, arguments } => {
             println!("CallExpr: {:?}", paren);
-            traverse_expr(callee,depth+1);
+            traverse_expr(callee,depth+1,map);
             for arg in arguments {
-                traverse_expr(arg,depth+1);
+                traverse_expr(arg,depth+1,map);
             }
             Literal::Number(0.0)
         }
         Expr::Get { object, name } => {
             println!("GetExpr: {:?}", name);
-            traverse_expr(object,depth+1);
+            traverse_expr(object,depth+1,map);
             Literal::Number(0.0)
         }
         Expr::Set { object, name, value } => {
             println!("SetExpr: {:?}", name);
-            traverse_expr(object,depth+1);
-            traverse_expr(value,depth+1);
+            traverse_expr(object,depth+1,map);
+            traverse_expr(value,depth+1,map);
             Literal::Number(0.0)
         }
         Expr::This(token) => {
@@ -193,7 +243,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize) -> Literal {
         }
         Expr::Grouping(expr) => {
             println!("GroupingExpr");
-            let val: Literal = traverse_expr(expr, depth + 1);
+            let val: Literal = traverse_expr(expr, depth + 1,map);
             val
         }
     }

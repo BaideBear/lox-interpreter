@@ -1,8 +1,6 @@
-use lox_interpreter::{lexer::Lexer, parser::Parser, Expr, Stmt};
+use lox_interpreter::{lexer::Lexer, parser::Parser, Expr, Literal, Stmt};
 use std::{
-    fs,
-    io::{self, Write},
-    path::Path,
+    collections::HashMap, fs, io::{self, Write}, path::Path
 };
 use lox_interpreter::token::Token;
 mod intepreter;
@@ -92,6 +90,6 @@ fn process_input(input: &str) {
     /*for stmt in statements {
         println!("{:#?}", stmt);
     }*/
-
-    intepreter::traverse_statements(&statements,0);
+    let mut map: HashMap<String, Literal> = HashMap::new();
+    intepreter::traverse_statements(&statements,0,&mut map);
 }
