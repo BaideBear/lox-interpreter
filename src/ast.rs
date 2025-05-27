@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::token::Token;
 
 #[derive(Debug,Clone)]
@@ -112,5 +114,4 @@ pub enum Literal {
     String(String),
     Bool(bool),
     Nil,
-    Null,
 }

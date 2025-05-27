@@ -11,3 +11,4 @@ lalrpop-util = "0.19"
 thiserror = "1.0"  # 用于错误处理
 anyhow = "1.0"     # 用于错误传播
 lazy_static = "1.4" # 用于定义全局数据结构
+rand = "0.8" #用于生成随机字符串

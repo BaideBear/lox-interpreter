@@ -1,3 +1,4 @@
+use intepreter::{Framelist, Value};
 use lox_interpreter::{lexer::Lexer, parser::Parser, Expr, Literal, Stmt};
 use std::{
     collections::HashMap, fs, io::{self, Write}, path::Path
@@ -87,10 +88,10 @@ fn process_input(input: &str) {
     println!("\nAST:");
     let statements = parser.parse();  // 直接获取Vec<Stmt>
     
-    /*for stmt in statements {
-        println!("{:#?}", stmt);
-    }*/
-    let mut map: HashMap<String, Literal> = HashMap::new();
-    let mut func: HashMap<String,(Vec<Token>, Vec<Stmt>)> = HashMap::new();
-    intepreter::traverse_statements(&statements,0,&mut map,&mut func);
+    let mut map: HashMap<(String,String), Value> = HashMap::new();
+    let mut env: Framelist = Framelist{
+        next: None,
+        frame: "__global__".to_string(),
+    };
+    intepreter::traverse_statements(&statements,0,&mut map,env);
 }
