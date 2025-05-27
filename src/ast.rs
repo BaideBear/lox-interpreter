@@ -1,6 +1,6 @@
 use crate::token::Token;
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Stmt {
     // 表达式语句
     Expr(Expr),
@@ -112,4 +112,5 @@ pub enum Literal {
     String(String),
     Bool(bool),
     Nil,
+    Null,
 }

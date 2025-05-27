@@ -91,5 +91,6 @@ fn process_input(input: &str) {
         println!("{:#?}", stmt);
     }*/
     let mut map: HashMap<String, Literal> = HashMap::new();
-    intepreter::traverse_statements(&statements,0,&mut map);
+    let mut func: HashMap<String,(Vec<Token>, Vec<Stmt>)> = HashMap::new();
+    intepreter::traverse_statements(&statements,0,&mut map,&mut func);
 }
