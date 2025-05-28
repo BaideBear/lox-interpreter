@@ -2,6 +2,7 @@ use lox_interpreter::{lexer::Lexer, parser::Parser, Expr, Stmt,Literal};
 use lox_interpreter::token::Token;
 use std::collections::HashMap;
 use rand::{distributions::Alphanumeric, Rng};
+use std::rc::Rc;
 fn gen_string(length: usize) -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric) // 包括 A-Z, a-z, 0-9
@@ -23,6 +24,14 @@ pub enum Value {
         params: Vec<Token>,
         body: Vec<Stmt>,
     },
+    Classdef {
+        superclass: String,
+        methods: Vec<Stmt>,
+    },
+    Instance {
+        name: String,
+        fields: HashMap<String, Rc<Value>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -31,41 +40,45 @@ pub struct Framelist{
     pub frame: String,
 }
 
-pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,map: &mut HashMap<(String,String), Value>,env: Framelist) ->Value{
-    for stmt in statements {
-        let val: Value=traverse_stmt(stmt,depth,map,env.clone());
-        match val {
-            Value::Number(_) => return val,
-            Value::String(_) => return val,
-            Value::Bool(_) => return val,
-            Value::Null => return val,
-            Value::Function { frame, params, body, name } => {
-                return Value::Function {
-                    name,
-                    frame,
-                    params,
-                    body,
-                };
-            }
-            _ => continue,
-        }
-    }
-    return Value::Nil
+#[derive(Debug, Clone)]
+pub struct Ret{
+    pub exit:bool,
+    pub value:Value,
 }
 
-pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String), Value>,env: Framelist) -> Value{
+pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,map: &mut HashMap<(String,String), Value>,env: Framelist,obj :Option<Rc<Value>>) ->Ret{
+    for _ in 0..depth {
+        print!("  ");
+    }
+    println!("Statements");
+    for stmt in statements {
+        let val: Ret = traverse_stmt(stmt,depth,map,env.clone(),obj.clone());
+        if val.exit {
+            return val;
+        }
+    }
+    Ret {
+        exit: false,
+        value: Value::Nil,
+    }
+}
+
+pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String), Value>,env: Framelist,obj :Option<Rc<Value>>) -> Ret{
     for _ in 0..depth {
         print!("  ");
     }
     match stmt {
         Stmt::Expr(expr) => {
             println!("ExpressionStmt");
-            traverse_expr(expr,depth+1,map,env);
-            Value::Nil
+            traverse_expr(expr,depth+1,map,env,obj);
+            Ret {
+                exit: false,
+                value: Value::Nil,
+            }
         }
         Stmt::Print(expr) => {
             println!("PrintStmt");
-            let value: Value = traverse_expr(expr,depth+1,map,env);
+            let value: Value = traverse_expr(expr,depth+1,map,env,obj);
             match value {
                 Value::Number(num) => println!("{}", num),
                 Value::String(s) => println!("{}", s),
@@ -73,18 +86,24 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 Value::Nil => println!("nil"),
                 _ => println!("Unknown value"),
             }
-            Value::Nil
+            Ret {
+                exit: false,
+                value: Value::Nil,
+            }
         }
         Stmt::Var { name, initializer } => {
             println!("VarStmt: {:?}", name);
             if let Some(expr) = initializer {
-                let value: Value = traverse_expr(expr,depth+1,map,env.clone());
+                let value: Value = traverse_expr(expr,depth+1,map,env.clone(),obj.clone());
                 map.insert((name.lexeme().to_string(), env.clone().frame), value);
             }
             else{
                 map.insert((name.lexeme().to_string(), env.clone().frame), Value::Nil);
             }
-            Value::Nil
+            Ret {
+                exit: false,
+                value: Value::Nil,
+            }
         }
         Stmt::Block(stmts) => {
             println!("BlockStmt");
@@ -94,56 +113,85 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 next: Some(Box::new(env)),
                 frame: new_env.clone(),
             };
+            let mut flag: bool=false;
             for s in stmts {
-                traverse_stmt(s,depth+1,&mut new_map,new_frame.clone());
+                let Ret: Ret=traverse_stmt(s,depth+1,&mut new_map,new_frame.clone(),obj.clone());
+                if Ret.exit {
+                    flag=true;
+                    break;
+                }
             }
             for (key, value) in new_map {
                 map.insert(key, value);
             }
-            Value::Nil
+            Ret {
+                exit: flag,
+                value: Value::Nil,
+            }
         }
         Stmt::If { condition, then_branch, else_branch } => {
             println!("IfStmt");
-            let cond: Value = traverse_expr(condition, depth + 1, map, env.clone());
+            let cond: Value = traverse_expr(condition, depth + 1, map, env.clone(), obj.clone());
             if let Value::Bool(true) = cond {
-                traverse_stmt(then_branch, depth + 1, map, env.clone());
+                let ret: Ret=traverse_stmt(then_branch, depth + 1, map, env.clone(), obj.clone());
+                if ret.exit {
+                    return ret;
+                }
             } else {
                 if let Some(else_branch) = else_branch {
-                    traverse_stmt(else_branch, depth + 1, map, env.clone());
+                    let ret: Ret=traverse_stmt(else_branch, depth + 1, map, env.clone(), obj.clone());
+                    if ret.exit {
+                        return ret;
+                    }
                 }
             }
-            Value::Nil
+            Ret {
+                exit: false,
+                value: Value::Nil,
+            }
         }
         Stmt::While { condition, body } => {
             println!("WhileStmt");
             loop{
-                let cond: Value = traverse_expr(condition, depth + 1, map, env.clone());
+                let cond: Value = traverse_expr(condition, depth + 1, map, env.clone(), obj.clone());
                 if let Value::Bool(false) = cond {
                     break;
                 }
-                traverse_stmt(body, depth + 1, map, env.clone());
+                let ret: Ret = traverse_stmt(body, depth + 1, map, env.clone(), obj.clone());
+                if ret.exit {
+                    return ret;
+                }
             }
-            Value::Nil
+            Ret {
+                exit: false,
+                value: Value::Nil,
+            }
         }
         Stmt::For { initializer, condition, increment, body } => {
             println!("ForStmt");
             let mut new_map: HashMap<(String,String), Value> = map.clone();
             if let Some(init) = initializer {
-                traverse_stmt(init,depth + 1,&mut new_map,env.clone());
+                traverse_stmt(init,depth + 1,&mut new_map,env.clone(), obj.clone());
             }
             loop{
                 if let Some(cond) = condition {
-                    let cond = traverse_expr(cond,depth + 1,&mut new_map,env.clone());
+                    let cond = traverse_expr(cond,depth + 1,&mut new_map,env.clone(), obj.clone());
                     if let Value::Bool(false) = cond {
                         break;
                     }
                 }
-                traverse_stmt(body,depth + 1,&mut new_map,env.clone());
+                let ret: Ret = traverse_stmt(body, depth + 1, &mut new_map, env.clone(), obj.clone());
+                if ret.exit {
+                    return ret;
+                }
                 if let Some(inc) = increment {
-                    traverse_expr(inc,depth + 1,&mut new_map,env.clone());
+                    traverse_expr(inc, depth + 1, &mut new_map, env.clone(), obj.clone());
                 }
             }
-            Value::Nil
+            Ret {
+                exit: false,
+                value: Value::Nil,
+            }
         }
         Stmt::Function { name, params, body } => {
             println!("FunctionStmt: {:?}", name);
@@ -157,33 +205,50 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 name: env.clone(),
             };
             map.insert((name.lexeme().to_string(), env.frame.clone()), func);
-            Value::Nil
+            Ret {
+                exit: false,
+                value: Value::Nil,
+            }
         }
         Stmt::Return { keyword, value } => {
             println!("ReturnStmt: {:?}", keyword);
             if let Some(expr) = value {
-                let val: Value = traverse_expr(expr,depth + 1,map,env.clone());
-                if let Value::Function { .. } = val {
-                    println!("val is a function, returning it directly");
-                }
-                return val;
+                let val: Value = traverse_expr(expr,depth + 1,map,env.clone(),obj.clone());
+                return Ret {
+                    exit: true,
+                    value: val,
+                };
             }
-            Value::Null
+            Ret {
+                exit: false,
+                value: Value::Null,
+            }
         }
         Stmt::Class { name, superclass, methods } => {
             println!("ClassStmt: {:?}", name);
-            if let Some(superclass_expr) = superclass {
-                traverse_expr(superclass_expr,depth + 1,map,env.clone());
+            let newclass: Value = Value::Classdef {
+                superclass: if let Some(superclass_expr) = superclass {
+                    if let Expr::Variable(token) = superclass_expr {
+                        token.lexeme().to_string()
+                    } else {
+                        println!("Error: Superclass must be a variable");
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                },
+                methods: methods.clone(),
+            };
+            map.insert((name.lexeme().to_string(), env.frame.clone()), newclass);
+            Ret {
+                exit: false,
+                value: Value::Nil,
             }
-            for method in methods {
-                traverse_stmt(method,depth + 1,map,env.clone());
-            }
-            Value::Nil
         }
     }
 }
 
-pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String), Value>,env: Framelist) -> Value {
+pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String), Value>,env: Framelist,obj :Option<Rc<Value>>) -> Value {
     for _ in 0..depth {
         print!("  ");
     }
@@ -209,7 +274,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
         }
         Expr::Assign { name, value } => {
             println!("AssignExpr: {:?}", name);
-            let value: Value = traverse_expr(value,depth+1,map,env.clone());
+            let value: Value = traverse_expr(value,depth+1,map,env.clone(),obj.clone());
             let mut cur_env: Framelist = env.clone();
             let old_frame:Framelist;
             loop {
@@ -227,14 +292,33 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
         }
         Expr::Logical { left, operator, right } => {
             println!("LogicalExpr: {:?}", operator);
-            traverse_expr(left,depth+1,map,env.clone());
-            traverse_expr(right,depth+1,map,env.clone());
-            Value::Number(0.0)
+            let left_value: Value = traverse_expr(left, depth + 1, map, env.clone(), obj.clone());
+            let right_value: Value = traverse_expr(right, depth + 1, map, env.clone(), obj.clone());
+            let mut result: Value = Value::Nil;
+            match operator.lexeme() {
+                "or" => {
+                    if let Value::Bool(true) = left_value {
+                        result = left_value;
+                    } else {
+                        result = right_value;
+                    }
+                }
+                "and" => {
+                    if let Value::Bool(false) = left_value {
+                        result = left_value;
+                    } else {
+                        result = right_value;
+                    }
+                }
+                _ => println!("  Result: Unknown logical operation"),
+            }
+            result
         }
         Expr::Binary { left, operator, right } => {
             println!("BinaryExpr: {:?}", operator);
-            let left_value: Value = traverse_expr(left,depth+1,map,env.clone());
-            let right_value: Value = traverse_expr(right,depth+1,map,env.clone());
+            let left_value: Value = traverse_expr(left,depth+1,map,env.clone(),obj.clone());
+            println!("  Left value: {:?}", left_value);
+            let right_value: Value = traverse_expr(right,depth+1,map,env.clone(),obj.clone());
             let mut result: Value = Value::Number(0.0);
             let left_num = match left_value {
                 Value::Number(num) => num,
@@ -291,7 +375,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
         }
         Expr::Unary { operator, right } => {
             println!("UnaryExpr: {:?}", operator);
-            let value: Value = traverse_expr(right, depth + 1,map,env.clone());
+            let value: Value = traverse_expr(right, depth + 1,map,env.clone(),obj.clone());
             let mut result: Value = Value::Number(0.0);
             let num = match value {
                 Value::Number(n) => n,
@@ -306,10 +390,10 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
         }
         Expr::Call { callee, paren, arguments } => {
             println!("CallExpr: {:?}", paren);
-            let func: Value= traverse_expr(callee, depth + 1, map, env.clone());
+            let func: Value= traverse_expr(callee, depth + 1, map, env.clone(), obj.clone());
             let mut args: Vec<Value> = Vec::new();
             for arg in arguments {
-                let value = traverse_expr(arg, depth + 1, map, env.clone());
+                let value = traverse_expr(arg, depth + 1, map, env.clone(), obj.clone());
                 args.push(value);
             }
             match func {
@@ -329,11 +413,11 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     };
                     // Execute the function body in the new environment
                     //println!("  Calling function: {} with new environment: {} old env: {}", name, new_env, env);
-                    let retval: Value= traverse_statements(&body, depth + 1, &mut call_frame, new_frame);
+                    let retval: Ret= traverse_statements(&body, depth + 1, &mut call_frame, new_frame,obj.clone());
                     for(k,v) in call_frame.iter() {
                         map.insert((k.0.clone(), k.1.clone()), v.clone());
                     }
-                    return retval;
+                    return retval.value;
                 }
                 _ => println!("  Error: Attempted to call a non-function"),
             }
@@ -341,13 +425,13 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
         }
         Expr::Get { object, name } => {
             println!("GetExpr: {:?}", name);
-            traverse_expr(object,depth+1,map,env.clone());
+            traverse_expr(object,depth+1,map,env.clone(),obj.clone());
             Value::Number(0.0)
         }
         Expr::Set { object, name, value } => {
             println!("SetExpr: {:?}", name);
-            traverse_expr(object,depth+1,map,env.clone());
-            traverse_expr(value,depth+1,map,env.clone());
+            traverse_expr(object,depth+1,map,env.clone(),obj.clone());
+            traverse_expr(value,depth+1,map,env.clone(),obj.clone());
             Value::Number(0.0)
         }
         Expr::This(token) => {
@@ -360,7 +444,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
         }
         Expr::Grouping(expr) => {
             println!("GroupingExpr");
-            let val: Value = traverse_expr(expr, depth + 1,map,env.clone());
+            let val: Value = traverse_expr(expr, depth + 1,map,env.clone(),obj.clone());
             val
         }
     }

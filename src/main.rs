@@ -93,5 +93,5 @@ fn process_input(input: &str) {
         next: None,
         frame: "__global__".to_string(),
     };
-    intepreter::traverse_statements(&statements,0,&mut map,env);
+    intepreter::traverse_statements(&statements,0,&mut map,env,None);
 }
