@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use rand::{distributions::Alphanumeric, Rng};
 use std::rc::Rc;
-fn gen_string(length: usize) -> String {
+fn gen_string(length: usize) -> String {//生成随机字符串
     rand::thread_rng()
         .sample_iter(&Alphanumeric) // 包括 A-Z, a-z, 0-9
         .take(length)
@@ -14,13 +14,13 @@ fn gen_string(length: usize) -> String {
 }
 
 #[derive(Debug, Clone)]
-pub enum Value {
+pub enum Value {//值类型
     Number(f64),
     String(String),
     Bool(bool),
     Nil,
     Null,
-    Function {
+    Function {//函数
         name: Framelist,
         frame: HashMap<(String,String),Option<Rc<RefCell<Value>>>>,
         params: Vec<Token>,
@@ -28,31 +28,31 @@ pub enum Value {
         obj_bind: Option<Rc<RefCell<Value>>>,
         class_def: Option<String>,
     },
-    Classdef {
+    Classdef {//类定义
         name: String,
         superclass: String,
         methods: Vec<Stmt>,
     },
-    Instance {
+    Instance {//实例
         name: String,
         fields: HashMap<(String,String), Option<Rc<RefCell<Value>>>>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct Framelist{
+pub struct Framelist{//作用域链
     pub next: Option<Box<Framelist>>,
     pub frame: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct Ret{
-    pub exit:bool,
+pub struct Ret{//返回值
+    pub exit:bool,//是否需要退出当前函数
     pub value: Option<Rc<RefCell<Value>>>,
 }
 
 pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,map: &mut HashMap<(String,String), Option<Rc<RefCell<Value>>>>,
-    env: Framelist,obj :Option<Rc<RefCell<Value>>>,cur_class: Option<String>) ->Ret{
+    env: Framelist,obj :Option<Rc<RefCell<Value>>>,cur_class: Option<String>) ->Ret{//遍历多条语句
     for _ in 0..depth {
         print!("  ");
     }
@@ -70,12 +70,12 @@ pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,map: &mut HashMap
 }
 
 pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String), Option<Rc<RefCell<Value>>>>,
-    env: Framelist,obj :Option<Rc<RefCell<Value>>>,cur_class: Option<String>) -> Ret{ 
+    env: Framelist,obj :Option<Rc<RefCell<Value>>>,cur_class: Option<String>) -> Ret{ //遍历单条语句
     for _ in 0..depth {
         print!("  ");
     }
     match stmt {
-        Stmt::Expr(expr) => {
+        Stmt::Expr(expr) => {//表达式语句
             println!("ExpressionStmt");
             traverse_expr(expr,depth+1,map,env,obj.clone(),cur_class.clone());
             Ret {
@@ -83,7 +83,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::Print(expr) => {
+        Stmt::Print(expr) => {//打印语句
             println!("PrintStmt");
             let value: Option<Rc<RefCell<Value>>> = traverse_expr(expr,depth+1,map,env,obj.clone(),cur_class.clone());
             match value {
@@ -104,7 +104,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::Var { name, initializer } => {
+        Stmt::Var { name, initializer } => {//变量声明语句
             println!("VarStmt: {:?}", name);
             if let Some(expr) = initializer {
                 let value: Option<Rc<RefCell<Value>>> = traverse_expr(expr,depth+1,map,env.clone(),obj.clone(),cur_class.clone());
@@ -118,7 +118,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::Block(stmts) => {
+        Stmt::Block(stmts) => {//块语句
             println!("BlockStmt");
             let mut new_map: HashMap<(String,String), Option<Rc<RefCell<Value>>>> = map.clone();
             let new_env = gen_string(15);
@@ -142,7 +142,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::If { condition, then_branch, else_branch } => {
+        Stmt::If { condition, then_branch, else_branch } => {//条件语句
             println!("IfStmt");
             let cond: Option<Rc<RefCell<Value>>> = traverse_expr(condition, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
             if let Some(ref rc_cond) = cond {
@@ -166,7 +166,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::While { condition, body } => {
+        Stmt::While { condition, body } => {//while循环语句
             println!("WhileStmt");
             loop {
                 let cond: Option<Rc<RefCell<Value>>> = traverse_expr(condition, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
@@ -186,7 +186,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::For { initializer, condition, increment, body } => {
+        Stmt::For { initializer, condition, increment, body } => {//for循环语句
             println!("ForStmt");
             let mut new_map: HashMap<(String,String), Option<Rc<RefCell<Value>>>> = map.clone();
             if let Some(init) = initializer {
@@ -215,7 +215,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::Function { name, params, body } => {
+        Stmt::Function { name, params, body } => {//函数声明语句
             println!("FunctionStmt: {:?}", name);
             for param in params {
                 println!("  Param: {:?}", param);
@@ -243,7 +243,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Nil))),
             }
         }
-        Stmt::Return { keyword, value } => {
+        Stmt::Return { keyword, value } => {//返回语句
             println!("ReturnStmt: {:?}", keyword);
             if let Some(expr) = value {
                 let val: Option<Rc<RefCell<Value>>> = traverse_expr(expr,depth + 1,map,env.clone(),obj.clone(),cur_class.clone());
@@ -257,7 +257,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 value: Some(Rc::new(RefCell::new(Value::Null))),
             }
         }
-        Stmt::Class { name, superclass, methods } => {
+        Stmt::Class { name, superclass, methods } => {//类声明语句
             println!("ClassStmt: {:?}", name);
             let newclass: Value = Value::Classdef {
                 name: name.lexeme().to_string(),
@@ -288,12 +288,12 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
         print!("  ");
     }
     match expr {
-        Expr::Literal(literal) => {
+        Expr::Literal(literal) => {//字面量表达式
             println!("LiteralExpr: {:?}", literal);
             let val: Value = traverse_literal(literal, depth + 1);
             Some(Rc::new(RefCell::new(val)))
         }
-        Expr::Variable(token) => {
+        Expr::Variable(token) => {//变量表达式
             println!("VariableExpr: {:?}", token);
             let mut cur_env: Framelist = env.clone();
             loop {
@@ -307,7 +307,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
             Some(Rc::new(RefCell::new(Value::Nil))) // Return Nil if variable not found
         }
-        Expr::Assign { name, value } => {
+        Expr::Assign { name, value } => {//赋值表达式
             println!("AssignExpr: {:?}", name);
             let value: Option<Rc<RefCell<Value>>> = traverse_expr(value,depth+1,map,env.clone(),obj.clone(),cur_class.clone());
             let mut cur_env: Framelist = env.clone();
@@ -325,7 +325,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
             Some(Rc::new(RefCell::new(Value::Number(0.0)))) // Return Nil after assignment
         }
-        Expr::Logical { left, operator, right } => {
+        Expr::Logical { left, operator, right } => {//逻辑表达式
             println!("LogicalExpr: {:?}", operator);
             let left_value: Option<Rc<RefCell<Value>>> = traverse_expr(left, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
             let right_value: Option<Rc<RefCell<Value>>> = traverse_expr(right, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
@@ -356,7 +356,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
             result
         }
-        Expr::Binary { left, operator, right } => {
+        Expr::Binary { left, operator, right } => {//二元运算表达式
             println!("BinaryExpr: {:?}", operator);
             let left_value: Option<Rc<RefCell<Value>>> = traverse_expr(left,depth+1,map,env.clone(),obj.clone(),cur_class.clone());
             let right_value: Option<Rc<RefCell<Value>>> = traverse_expr(right,depth+1,map,env.clone(),obj.clone(),cur_class.clone());
@@ -473,7 +473,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             };
             result
         }
-        Expr::Unary { operator, right } => {
+        Expr::Unary { operator, right } => {//一元运算表达式
             println!("UnaryExpr: {:?}", operator);
             let value: Option<Rc<RefCell<Value>>> = traverse_expr(right, depth + 1,map,env.clone(),obj.clone(),cur_class.clone());
             let mut result: Option<Rc<RefCell<Value>>> = Some(Rc::new(RefCell::new(Value::Number(0.0))));
@@ -501,7 +501,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
             result
         }
-        Expr::Call { callee, paren, arguments } => {
+        Expr::Call { callee, paren, arguments } => {//调用表达式
             println!("CallExpr: {:?}", paren);
             let func: Option<Rc<RefCell<Value>>> = traverse_expr(callee, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
             let mut args: Vec<Value> = Vec::new();
@@ -517,7 +517,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                 Some(ref rc_func) => {
                     let func = rc_func.borrow();
                     match &*func {
-                        Value::Function { frame, params, body, name ,obj_bind,class_def} => {
+                        Value::Function { frame, params, body, name ,obj_bind,class_def} => {//函数调用
                             // Create a new environment for the function call
                             let mut call_frame = frame.clone();
                             for(k,v) in map.iter() {
@@ -537,7 +537,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                             }
                             return retval.value;
                         }
-                        Value::Classdef { name, superclass, methods } => {
+                        Value::Classdef { name, superclass, methods } => {//类调用
                             let new_field: HashMap<(String,String), Option<Rc<RefCell<Value>>>>= HashMap::new();
                             let instance_name = name.clone();
                             let instance = Value::Instance {
@@ -681,11 +681,11 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                 _ => Option::Some(Rc::new(RefCell::new(Value::Nil)))
             }
         }
-        Expr::This(token) => {
+        Expr::This(token) => {//this表达式
             println!("ThisExpr: {:?}", token);
             obj
         }
-        Expr::Get { object, name } => {
+        Expr::Get { object, name } => {//属性访问表达式
             println!("GetExpr: {:?}", name);
             let obj_value: Option<Rc<RefCell<Value>>> = traverse_expr(&object, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
             match obj_value {
@@ -729,7 +729,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
             Some(Rc::new(RefCell::new(Value::Nil))) // Return Nil if property not found
         }
-        Expr::Set { object, name, value } => {
+        Expr::Set { object, name, value } => {//属性设置表达式
             println!("SetExpr: {:?}", name);
             let obj_value: Option<Rc<RefCell<Value>>> = traverse_expr(&object, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
             let new_value: Option<Rc<RefCell<Value>>> = traverse_expr(&value, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
@@ -744,7 +744,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
             Some(Rc::new(RefCell::new(Value::Nil))) // Return Nil after setting the property
         }
-        Expr::Super { keyword, method } => {
+        Expr::Super { keyword, method } => {//super表达式
             println!("SuperExpr: {:?} {:?}", keyword, method);
             let mut cur_env: Framelist = env.clone();
             let mut current_class=map.get(&(cur_class.clone().unwrap_or_default(), env.frame.clone()));
@@ -804,7 +804,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
             Some(Rc::new(RefCell::new(Value::Nil)))
         }
-        Expr::Grouping(expr) => {
+        Expr::Grouping(expr) => {//分组表达式（括号内表达式）
             println!("GroupingExpr");
             let val: Option<Rc<RefCell<Value>>> = traverse_expr(&expr, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
             val
@@ -812,7 +812,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
     }
 }
 
-pub fn traverse_literal(literal: &Literal, depth: usize) -> Value{
+pub fn traverse_literal(literal: &Literal, depth: usize) -> Value{//获取字面量的值
     for _ in 0..depth {
         print!("  ");
     }
