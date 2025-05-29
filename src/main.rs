@@ -1,7 +1,7 @@
 use intepreter::{Framelist, Value};
 use lox_interpreter::{lexer::Lexer, parser::Parser, Expr, Literal, Stmt};
 use std::{
-    collections::HashMap, fs, io::{self, Write}, path::Path
+    cell::RefCell, collections::HashMap, fs, io::{self, Write}, path::Path, rc::Rc
 };
 use lox_interpreter::token::Token;
 mod intepreter;
@@ -88,10 +88,10 @@ fn process_input(input: &str) {
     println!("\nAST:");
     let statements = parser.parse();  // 直接获取Vec<Stmt>
     
-    let mut map: HashMap<(String,String), Value> = HashMap::new();
+    let mut map: HashMap<(String,String), Option<Rc<RefCell<Value>>>> = HashMap::new();
     let mut env: Framelist = Framelist{
         next: None,
         frame: "__global__".to_string(),
     };
-    intepreter::traverse_statements(&statements,0,&mut map,env,None);
+    intepreter::traverse_statements(&statements,0,&mut map,env,None,None);
 }
