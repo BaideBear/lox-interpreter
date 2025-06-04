@@ -80,6 +80,13 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
             match value {
                 Some(ref rc_value) => {
                     let value = rc_value.borrow();
+                    match &*value {
+                        Value::Number(num) => println!("{}", num),
+                        Value::String(s) => println!("{}", s),
+                        Value::Bool(b) => println!("{}", b),
+                        Value::Nil => println!("nil"),
+                        _ => println!("Unknown value"),
+                    }
                 },
                 None => println!("Error: PrintStmt requires a value"),
             }
