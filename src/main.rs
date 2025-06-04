@@ -78,14 +78,14 @@ fn process_input(input: &str) {
         tokens.push(token);
     }
 
-    println!("\nTokens:");
+    /*println!("\nTokens:");
     for token in &tokens {
         println!("  {:?}", token);
-    }
+    }*/
 
     // 语法分析
     let mut parser = Parser::new(&tokens);
-    println!("\nAST:");
+    //println!("\nAST:");
     let statements = parser.parse();  // 直接获取Vec<Stmt>
     
     let mut map: HashMap<(String,String), Option<Rc<RefCell<Value>>>> = HashMap::new();
