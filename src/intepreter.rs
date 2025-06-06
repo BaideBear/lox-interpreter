@@ -144,7 +144,14 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                     if ret.exit {
                         return ret;
                     }
-                } else {
+                } 
+                else if let Value::String(s) = &*cond_value {
+                    let ret: Ret = traverse_stmt(then_branch, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
+                    if ret.exit {
+                        return ret;
+                    }
+                }
+                else {
                     if let Some(else_branch) = else_branch {
                         let ret: Ret = traverse_stmt(else_branch, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
                         if ret.exit {
