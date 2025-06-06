@@ -27,6 +27,7 @@ pub enum Value {//值类型
         body: Vec<Stmt>,
         obj_bind: Option<Rc<RefCell<Value>>>,
         class_def: Option<String>,
+        func_name: String,
     },
     Classdef {//类定义
         name: String,
@@ -85,6 +86,9 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                         Value::String(s) => println!("{}", s),
                         Value::Bool(b) => println!("{}", b),
                         Value::Nil => println!("nil"),
+                        Value::Function { name, frame, params, body, obj_bind, class_def, func_name } => {
+                            println!("<fn {}>", func_name);
+                        }
                         _ => println!("Unknown value"),
                     }
                 },
@@ -209,6 +213,7 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 name: env.clone(),
                 obj_bind: obj.clone(),
                 class_def: cur_class.clone(),
+                func_name: name.lexeme().to_string(),
             };
             map.insert((name.lexeme().to_string(), env.frame.clone()), Some(Rc::new(RefCell::new(func.clone()))));
             if let Some(obj_ref) = obj {
@@ -487,7 +492,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                 Some(ref rc_func) => {
                     let func = rc_func.borrow();
                     match &*func {
-                        Value::Function { frame, params, body, name ,obj_bind,class_def} => {//函数调用
+                        Value::Function { frame, params, body, name ,obj_bind,class_def, func_name} => {//函数调用
                             // Create a new environment for the function call
                             let mut call_frame = frame.clone();
                             for(k,v) in map.iter() {
@@ -572,7 +577,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                                             if let Some(init_method) = fields.get(&(init, cur_name.clone())) {//if init method exists
                                                 if let Some(ref rc_func)=init_method{
                                                     let final_func= rc_func.borrow();
-                                                    if let Value::Function { frame, params, body, name: func_env, obj_bind: _ , class_def: _ } = &*final_func {
+                                                    if let Value::Function { frame, params, body, name: func_env, obj_bind: _ , class_def: _ , func_name } = &*final_func {
                                                         // Create a new environment for the init call
                                                         frame_func = frame.clone();
                                                         func_env_tmp=func_env.clone();
