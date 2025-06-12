@@ -1,3 +1,0 @@
-fun noop() {
-}
-print noop();

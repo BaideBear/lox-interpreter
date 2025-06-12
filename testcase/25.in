@@ -1,4 +1,0 @@
-class A {}
-var a = A();
-a.thing = 123;
-a.thing(); // 非函数

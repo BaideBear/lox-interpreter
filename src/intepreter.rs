@@ -372,13 +372,6 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     None => break,
                 }
             }
-            if GLOBAL_CLASS.load(Ordering::SeqCst) == true {
-                println!("RuntimeError: Undefined property '{}'.", name.lexeme());
-                GLOBAL_ERR.store(true, Ordering::SeqCst);
-            } else {
-                println!("RuntimeError: Undefined variable '{}'.", name.lexeme());
-                GLOBAL_ERR.store(true, Ordering::SeqCst);
-            }
             Some(Rc::new(RefCell::new(Value::Number(0.0)))) // Return Nil after assignment
         }
         Expr::Logical { left, operator, right } => {//逻辑表达式
@@ -757,7 +750,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                         }
                         _ => {
                             if GLOBAL_ERR.load(Ordering::SeqCst) == false {
-                                println!("RuntimeError: Can only call functions or classes.");
+                                println!("RuntimeError: Can only call functions and classes.");
                                 GLOBAL_ERR.store(true, Ordering::SeqCst);
                             }
                         }
