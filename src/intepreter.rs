@@ -348,7 +348,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     None => break, // No more environments to check
                 }
             }
-            if GLOBAL_CALL.load(Ordering::SeqCst) == true {
+            if GLOBAL_CLASS.load(Ordering::SeqCst) == true {
                 println!("RuntimeError: Undefined property '{}'.", token.lexeme());
                 GLOBAL_ERR.store(true, Ordering::SeqCst);
             } else {
@@ -372,7 +372,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     None => break,
                 }
             }
-            if GLOBAL_CALL.load(Ordering::SeqCst) == true {
+            if GLOBAL_CLASS.load(Ordering::SeqCst) == true {
                 println!("RuntimeError: Undefined property '{}'.", name.lexeme());
                 GLOBAL_ERR.store(true, Ordering::SeqCst);
             } else {
@@ -573,9 +573,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             result
         }
         Expr::Call { callee, paren, arguments } => {//调用表达式
-            GLOBAL_CALL.store(true, Ordering::SeqCst);
             let func: Option<Rc<RefCell<Value>>> = traverse_expr(callee, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
-            GLOBAL_CALL.store(false, Ordering::SeqCst);
             let mut args: Vec<Value> = Vec::new();
             for arg in arguments {
                 let value = traverse_expr(arg, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
