@@ -9,10 +9,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 mod intepreter;
 
 fn main() {
-    println!("Lox Interpreter (Rust)");
-    println!("Usage: ");
-    println!("  Interactive mode: run without arguments");
-    println!("  File mode: provide a .lox file path\n");
+    // println!("Lox Interpreter (Rust)");
+    // println!("Usage: ");
+    // println!("  Interactive mode: run without arguments");
+    // println!("  File mode: provide a .lox file path\n");
 
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
@@ -24,8 +24,8 @@ fn main() {
 }
 
 fn interactive_mode() {
-    println!("Entering interactive mode...");
-    println!("Type Lox expressions or 'exit' to quit\n");
+    // println!("Entering interactive mode...");
+    // println!("Type Lox expressions or 'exit' to quit\n");
 
     loop {
         print!("> ");
@@ -49,14 +49,14 @@ fn process_file(file_path: &str) {
         return;
     }
 
-    if path.extension().map_or(true, |ext| ext != "lox") {
+    if path.extension().map_or(true, |ext| ext != "in") {
         eprintln!("Error: Expected .lox file");
         return;
     }
 
     match fs::read_to_string(path) {
         Ok(source) => {
-            println!("Parsing file: {}\n", file_path);
+            // println!("Parsing file: {}\n", file_path);
             process_input(&source);
         }
         Err(e) => eprintln!("Error reading file: {}", e),
