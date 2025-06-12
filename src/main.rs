@@ -4,6 +4,8 @@ use std::{
     cell::RefCell, collections::HashMap, fs, io::{self, Write}, path::Path, rc::Rc
 };
 use lox_interpreter::token::Token;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 mod intepreter;
 
 fn main() {

@@ -5,6 +5,10 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use rand::{distributions::Alphanumeric, Rng};
 use std::rc::Rc;
+use lazy_static::lazy_static;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 fn gen_string(length: usize) -> String {//生成随机字符串
     rand::thread_rng()
         .sample_iter(&Alphanumeric) // 包括 A-Z, a-z, 0-9
@@ -12,6 +16,11 @@ fn gen_string(length: usize) -> String {//生成随机字符串
         .map(char::from)
         .collect()
 }
+
+pub static GLOBAL_ERR: AtomicBool = AtomicBool::new(false);
+pub static GLOBAL_FUNC: AtomicBool = AtomicBool::new(false);
+pub static GLOBAL_CLASS: AtomicBool = AtomicBool::new(false);
+pub static GLOBAL_CALL: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 pub enum Value {//值类型
@@ -52,7 +61,8 @@ pub struct Ret{//返回值
     pub value: Option<Rc<RefCell<Value>>>,
 }
 
-pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,map: &mut HashMap<(String,String), Option<Rc<RefCell<Value>>>>,
+pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,
+    map: &mut HashMap<(String,String), Option<Rc<RefCell<Value>>>>,
     env: Framelist,obj :Option<Rc<RefCell<Value>>>,cur_class: Option<String>) ->Ret{//遍历多条语句
     for stmt in statements {
         let val: Ret = traverse_stmt(stmt,depth,map,env.clone(),obj.clone(),cur_class.clone());
@@ -68,6 +78,12 @@ pub fn traverse_statements(statements: &Vec<Stmt>,depth: usize,map: &mut HashMap
 
 pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String), Option<Rc<RefCell<Value>>>>,
     env: Framelist,obj :Option<Rc<RefCell<Value>>>,cur_class: Option<String>) -> Ret{ //遍历单条语句
+    if GLOBAL_ERR.load(Ordering::SeqCst) == true {
+        return Ret {
+                exit: false,
+                value: Some(Rc::new(RefCell::new(Value::Nil))),
+            }; // 如果已经有错误，直接返回None
+    }
     match stmt {
         Stmt::Expr(expr) => {//表达式语句
             traverse_expr(expr,depth+1,map,env,obj.clone(),cur_class.clone());
@@ -78,6 +94,12 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
         }
         Stmt::Print(expr) => {//打印语句
             let value: Option<Rc<RefCell<Value>>> = traverse_expr(expr,depth+1,map,env,obj.clone(),cur_class.clone());
+            if GLOBAL_ERR.load(Ordering::SeqCst) == true {
+                return Ret {
+                    exit: false,
+                    value: Some(Rc::new(RefCell::new(Value::Nil))),
+                }; // 如果已经有错误，直接返回None
+            }
             match value {
                 Some(ref rc_value) => {
                     let value = rc_value.borrow();
@@ -92,7 +114,10 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                         _ => println!("Unknown value"),
                     }
                 },
-                None => println!("Error: PrintStmt requires a value"),
+                None => {
+                    println!("Error: PrintStmt requires a value");
+                    GLOBAL_ERR.store(true, Ordering::SeqCst);
+                }
             }
             Ret {
                 exit: false,
@@ -100,12 +125,21 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
             }
         }
         Stmt::Var { name, initializer } => {//变量声明语句
+            let var_name = name.lexeme().to_string();
+            let frame = env.clone().frame;
+            let key = (var_name.clone(), frame.clone());
+
+            if map.contains_key(&key) {
+                println!("Error: Already a variable with this name in this scope.");
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
+            }
+
             if let Some(expr) = initializer {
                 let value: Option<Rc<RefCell<Value>>> = traverse_expr(expr,depth+1,map,env.clone(),obj.clone(),cur_class.clone());
-                map.insert((name.lexeme().to_string(), env.clone().frame), value);
+                map.insert(key, value);
             }
             else{
-                map.insert((name.lexeme().to_string(), env.clone().frame), Some(Rc::new(RefCell::new(Value::Nil))));
+                map.insert(key, Some(Rc::new(RefCell::new(Value::Nil))));
             }
             Ret {
                 exit: false,
@@ -238,6 +272,10 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
             }
         }
         Stmt::Return { keyword, value } => {//返回语句
+            if GLOBAL_FUNC.load(Ordering::SeqCst) == false {
+                println!("Error: Can't return from top-level code.");
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
+            }
             if let Some(expr) = value {
                 let val: Option<Rc<RefCell<Value>>> = traverse_expr(expr,depth + 1,map,env.clone(),obj.clone(),cur_class.clone());
                 return Ret {
@@ -255,7 +293,18 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
                 name: name.lexeme().to_string(),
                 superclass: if let Some(superclass_expr) = superclass {
                     if let Expr::Variable(token) = superclass_expr {
-                        token.lexeme().to_string()
+                        if let Expr::Variable(token) = superclass_expr {
+                            traverse_expr( superclass_expr, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
+                            if GLOBAL_ERR.load(Ordering::SeqCst) == true {
+                                String::new() // 如果已经有错误，返回空字符串
+                            }
+                            else{
+                                token.lexeme().to_string()
+                            }
+                        } else {
+                            println!("Error: Superclass must be a variable");
+                            String::new()
+                        }
                     } else {
                         println!("Error: Superclass must be a variable");
                         String::new()
@@ -276,6 +325,13 @@ pub fn traverse_stmt(stmt: &Stmt,depth: usize,map: &mut HashMap<(String,String),
 
 pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String), Option<Rc<RefCell<Value>>>>,env: Framelist,
     obj :Option<Rc<RefCell<Value>>>,cur_class: Option<String>) -> Option<Rc<RefCell<Value>>> {
+    if depth > 3000{
+        GLOBAL_ERR.store(true, Ordering::SeqCst);
+        println!("RuntimeError: Stack overflow.");
+    }
+    if GLOBAL_ERR.load(Ordering::SeqCst) == true {
+        return Some(Rc::new(RefCell::new(Value::Nil))); // 如果已经有错误，直接返回None
+    }
     match expr {
         Expr::Literal(literal) => {//字面量表达式
             let val: Value = traverse_literal(literal, depth + 1);
@@ -291,6 +347,13 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     Some(next) => cur_env = (**next).clone(),
                     None => break, // No more environments to check
                 }
+            }
+            if GLOBAL_CALL.load(Ordering::SeqCst) == true {
+                println!("RuntimeError: Undefined property '{}'.", token.lexeme());
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
+            } else {
+                println!("RuntimeError: Undefined variable '{}'.", token.lexeme());
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
             }
             Some(Rc::new(RefCell::new(Value::Nil))) // Return Nil if variable not found
         }
@@ -308,6 +371,13 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     Some(next) => cur_env = (**next).clone(),
                     None => break,
                 }
+            }
+            if GLOBAL_CALL.load(Ordering::SeqCst) == true {
+                println!("RuntimeError: Undefined property '{}'.", name.lexeme());
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
+            } else {
+                println!("RuntimeError: Undefined variable '{}'.", name.lexeme());
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
             }
             Some(Rc::new(RefCell::new(Value::Number(0.0)))) // Return Nil after assignment
         }
@@ -346,6 +416,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             let right_value: Option<Rc<RefCell<Value>>> = traverse_expr(right,depth+1,map,env.clone(),obj.clone(),cur_class.clone());
             let mut result: Option<Rc<RefCell<Value>>> = Some(Rc::new(RefCell::new(Value::Number(0.0))));
             let mut isnumber: bool = false;
+            let mut type_conflict: bool = false;
             let left_num = match left_value {
                 Some(ref rc_left) => {
                     let left_value = rc_left.borrow();
@@ -376,7 +447,12 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                 Some(ref rc_left) => {
                     let left_value = rc_left.borrow();
                     match &*left_value {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => {
+                            if isnumber == true{
+                                type_conflict = true;
+                            }
+                            s.clone()
+                        },
                         _ => String::new(),
                     }
                 },
@@ -386,12 +462,21 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                 Some(ref rc_right) => {
                     let right_value = rc_right.borrow();
                     match &*right_value {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => {
+                            if isnumber == true{
+                                type_conflict = true;
+                            }
+                            s.clone()
+                        },
                         _ => String::new(),
                     }
                 },
                 None => String::new(),
             };
+            if type_conflict == true {
+                println!("RuntimeError: Operands must be two numbers or two strings.");
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
+            }
             match operator.lexeme() {
                 "+" => {
                     if isnumber==true{
@@ -406,7 +491,8 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     if right_num != 0.0 {
                         result = Some(Rc::new(RefCell::new(Value::Number(left_num / right_num))));
                     } else {
-                        println!("  Error: Division by zero");
+                        GLOBAL_ERR.store(true, Ordering::SeqCst);
+                        println!("RuntimeError: Division by zero.");
                     }
                 }
                 ">" => {
@@ -469,7 +555,9 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                         _ => 0.0, // Default to 0.0 for other types
                     }
                 },
-                None => 0.0,
+                None => {
+                    0.0
+                },
             };
             match operator.lexeme() {
                 "-" => result = Some(Rc::new(RefCell::new(Value::Number(-num)))),
@@ -485,7 +573,9 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             result
         }
         Expr::Call { callee, paren, arguments } => {//调用表达式
+            GLOBAL_CALL.store(true, Ordering::SeqCst);
             let func: Option<Rc<RefCell<Value>>> = traverse_expr(callee, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
+            GLOBAL_CALL.store(false, Ordering::SeqCst);
             let mut args: Vec<Value> = Vec::new();
             for arg in arguments {
                 let value = traverse_expr(arg, depth + 1, map, env.clone(), obj.clone(), cur_class.clone());
@@ -501,6 +591,15 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                     match &*func {
                         Value::Function { frame, params, body, name ,obj_bind,class_def, func_name} => {//函数调用
                             // Create a new environment for the function call
+                            GLOBAL_FUNC.store(true, Ordering::SeqCst);
+                            if params.len() != args.len() {
+                                println!(
+                                    "RuntimeError: Expected {} arguments but got {}.",
+                                    params.len(),
+                                    args.len()
+                                );
+                                GLOBAL_ERR.store(true, Ordering::SeqCst);
+                            }
                             let mut call_frame = frame.clone();
                             for(k,v) in map.iter() {
                                 call_frame.insert((k.0.clone(), k.1.clone()), v.clone());
@@ -517,9 +616,11 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                             for(k,v) in call_frame.iter() {
                                 map.insert((k.0.clone(), k.1.clone()), v.clone());
                             }
+                            GLOBAL_FUNC.store(false, Ordering::SeqCst);
                             return retval.value;
                         }
                         Value::Classdef { name, superclass, methods } => {//类调用
+                            GLOBAL_CLASS.store(true, Ordering::SeqCst);
                             let new_field: HashMap<(String,String), Option<Rc<RefCell<Value>>>>= HashMap::new();
                             let instance_name = name.clone();
                             let instance = Value::Instance {
@@ -653,9 +754,15 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                                     cur_name = next_class;
                                 }
                             }
+                            GLOBAL_CLASS.store(false, Ordering::SeqCst);
                             return new_instance;
                         }
-                        _ => {}
+                        _ => {
+                            if GLOBAL_ERR.load(Ordering::SeqCst) == false {
+                                println!("RuntimeError: Can only call functions or classes.");
+                                GLOBAL_ERR.store(true, Ordering::SeqCst);
+                            }
+                        }
                     }
                     Option::Some(Rc::new(RefCell::new(Value::Nil))) // Return Nil if not a function or class
                 }
@@ -663,6 +770,10 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
             }
         }
         Expr::This(token) => {//this表达式
+            if GLOBAL_CLASS.load(Ordering::SeqCst) == false {
+                println!("Error: Can't use 'this' outside of a class.");
+                GLOBAL_ERR.store(true, Ordering::SeqCst);
+            }
             obj
         }
         Expr::Get { object, name } => {//属性访问表达式
@@ -702,6 +813,8 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                                 cur_name = next_class;
                             }
                         }
+                        GLOBAL_ERR.store(true, Ordering::SeqCst);
+                        println!("RuntimeError: Undefined property '{}'.", name.lexeme());
                     }
                 }
                 None => println!("Error: GetExpr can only be used on instances"),
@@ -765,7 +878,7 @@ pub fn traverse_expr(expr: &Expr,depth: usize,map: &mut HashMap<(String,String),
                                                 next_class = next.clone();
                                             }
                                             _ => {
-                                                println!("Error: Expected a class definition");
+                                                println!("Error: Can't use 'super' in a class with no superclass.");
                                                 next_class = String::new();
                                             }
                                         }
